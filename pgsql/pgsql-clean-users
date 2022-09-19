@@ -1,0 +1,13 @@
+#!/bin/bash
+
+echo "SELECT usename FROM pg_catalog.pg_user WHERE usename LIKE 'v-userpass%';" > users.sql
+#sudo -u postgres < user.sql
+
+sudo -u postgres psql < users.sql | grep v-userpass > users.txt
+
+for i in $(cat users.txt); do
+	sudo -u postgres dropuser $i -e
+done	
+
+
+#sudo -u postgres dropuser 

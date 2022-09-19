@@ -1,0 +1,22 @@
+#!/bin/bash
+
+arg1=$1
+
+TMP_VAULT_TOKEN=$(jq -r .auth.client_token $arg1)
+# export VAULT_TOKEN=$TMP_VAULT_TOKEN
+policy=$(echo $arg1 | sed 's/\.token//')
+
+jq . ${policy}.token
+read
+
+VAULT_TOKEN=$TMP_VAULT_TOKEN vault read auth/token/lookup-self
+
+read
+# clear
+echo "Use the ${policy} token to fetch some database credentials"
+echo
+echo
+echo "vault read database/creds/${policy}"
+VAULT_TOKEN=$TMP_VAULT_TOKEN vault read database/creds/$policy -format=json > ${policy}.creds
+jq . ${policy}.creds
+

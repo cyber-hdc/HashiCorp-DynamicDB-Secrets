@@ -1,0 +1,18 @@
+#!/bin/bash
+
+echo "
+DROP DATABASE test_db01;
+DROP TABLE COMPANY;
+DROP TABLE DEPARTMENT;
+DROP DATABASE test_db0;
+DROP DATABASE app01;
+DROP DATABASE app02;
+DROP DATABASE app03;
+
+" > clean-db.sql
+
+
+sudo -u postgres psql < clean-db.sql
+
+rm -f clean-db.sql
+

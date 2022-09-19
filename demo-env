@@ -1,0 +1,128 @@
+
+# Set environment variables
+export PROJECT_BASE='/home/hc1324/data'
+export VAULT_BASE=$PROJECT_BASE'/vault'
+export VAULT_ADDR='http://127.0.0.1:8200'
+export VAULT_ROOT_TOKEN=$(cat ~/vault.info | grep Root | cut -f4 -d' ')
+
+
+export VAULT_USER_PASSWD="password"
+
+export PGSQL_USER='postgres'
+export PGSQL_USER_PASSWD='bPRTUXwoCdgNffsrOAcq'
+export PGSQL_VAULT_ADMIN='vault_dba'
+export PGSQL_VAULT_ADMIN_PASSWD='ajAhjjtykQUdanL0A8rv'
+export PGPASSWORD=${PGSQL_VAULT_ADMIN_PASSWD}
+
+export PG_DATA=$PROJECT_BASE'/postgresql'
+
+
+alias ctoken='echo $VAULT_TOKEN'
+alias rtoken='echo $VAULT_ROOT_TOKEN'
+alias vauth.root='export VAULT_TOKEN=$VAULT_ROOT_TOKEN;'
+
+alias pgstatus='service postgresql status'
+alias pgstart='service postgresql start'
+alias pgstop='service postgresql stop'
+
+alias mysqlstart='sudo systemctl start mysql.service'
+alias mysqlstop='sudo systemctl stop mysql.service'
+alias mysqlstatus='sudo systemctl status mysql.service'
+
+alias pgroot='export PGPASSWORD=${PGSQL_USER_PASSWD}; psql -h localhost -U ${PGSQL_USER} test_db01'
+alias pgvault='export PGPASSWORD=${PGSQL_VAULT_ADMIN_PASSWD}; psql -h localhost -U ${PGSQL_VAULT_ADMIN} test_db01'
+
+# alias capi=$(curl --header "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/sys/auth)
+
+alias cddyn='cd /home/hc1324/hcvault-dynamic-db'
+alias cdserv='cd /home/hc1324/hcvault-dynamic-db/vault-server'
+
+
+function pause() {
+
+    echo
+    read
+    clear
+}
+
+function vrefresh() {
+
+    echo "Refeshing environment..."
+    source ~/hcvault-dynamic-db/demo-env
+
+}
+
+function vquickunseal() {
+
+    # vkeys
+    echo ""
+    echo vault operator unseal
+    echo ""
+    vault operator unseal $(cat ~/vault.info | grep Unseal | cut -f4 -d' '  | sed -n '1 p')
+    vault operator unseal $(cat ~/vault.info | grep Unseal | cut -f4 -d' '  | sed -n '3 p')
+    vault operator unseal $(cat ~/vault.info | grep Unseal | cut -f4 -d' '  | sed -n '5 p')
+
+
+}
+
+
+function vauth() {
+
+    local 
+
+}
+
+function gcurl() {
+
+    path=$1
+
+    curl \
+        -H "X-Vault-Token: $VAULT_TOKEN" \
+        -X GET \
+        $VAULT_ADDR/v1/$path
+
+}
+
+function authro() {
+
+    local user=$1
+
+    echo vault login -method=userpass username=${user}ro password=${VAULT_USER_PASSWD}
+    echo ""
+    unset VAULT_TOKEN
+    vault login -method=userpass username=${user}ro password=${VAULT_USER_PASSWD} -format=json | tee .auth.swp
+    cat .auth.swp | jq -r '.auth.client_token'
+    export VAULT_TOKEN=$(cat .auth.swp | jq -r '.auth.client_token')
+    echo vault read database/creds/$user-readonly
+    vault read database/creds/$user-readonly
+
+
+}
+
+function vinit() {
+
+    echo vault operator init -key-shares=5 -key-threshold=3
+    echo
+    vault operator init -key-shares=5 -key-threshold=3 | tee ~/vault.info
+    source ~/hcvault-dynamic-db/set-env
+    export ROOT_TOKEN=$(cat ~/vault.info | grep Root | awk '{print $4}')
+    export VAULT_TOKEN=$VAULT_ROOT_TOKEN
+
+}
+
+function vstart() {
+
+    echo vault server -config $VAULT_BASE/config/config.hcl
+    echo  
+    vault server -config $VAULT_BASE/config/config.hcl 
+    # echo $! > vault.pid
+
+}
+
+function appToken() {
+
+
+    export APP_TOKEN=$(jq -r .auth.client_token .auth.swp)
+    echo $APP_TOKEN
+
+}

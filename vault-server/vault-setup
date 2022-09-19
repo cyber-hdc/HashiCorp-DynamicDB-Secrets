@@ -1,0 +1,265 @@
+#!/bin/bash
+
+# if [ ! -f admin.hcl ];
+# then
+#     echo "ERROR: admin.hcl file not found..., make sure you are in the correct directory..."
+#     exit 10
+# fi
+
+
+
+function pause() {
+
+    echo
+    read
+    clear
+}
+
+function enable_db_engine() {
+
+    local path=$1
+
+#    vault secrets enable database 
+    echo "Configuring a database connection"
+    echo 'vault write database/config/$path \
+        plugin_name=postgresql-database-plugin \
+        allowed_roles="readonly" \
+        connection_url="postgresql://{{username}}:{{password}}@localhost:5432/${path}?sslmode=disable" \
+        username=${PGSQL_VAULT_ADMIN} \
+        password=${PGSQL_VAULT_ADMIN_PASSWD} \
+        allowed_roles="${path}-readonly,${path}-readwrite"
+        '
+    vault write database/config/$path \
+        plugin_name=postgresql-database-plugin \
+        allowed_roles="readonly" \
+        connection_url="postgresql://{{username}}:{{password}}@localhost:5432/${path}?sslmode=disable" \
+        username=${PGSQL_VAULT_ADMIN} \
+        password=${PGSQL_VAULT_ADMIN_PASSWD} \
+        allowed_roles="${path}-readonly,${path}-readwrite"
+
+}
+
+# Create a readonly database role within Vault
+function create_role_ro() {
+
+    local path=$1
+
+    rm -f readonly.sql
+    cat <<EOF | tee readonly.sql
+CREATE ROLE "{{name}}" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' INHERIT;
+GRANT SELECT ALL TABLES IN SCHEMA app01 TO "{{name}}";
+EOF
+
+    echo 'vault write database/roles/${path}-readonly \
+        db_name=${path} \
+        creation_statements=@readonly.sql \
+        default_ttl=1h \
+        max_ttl=10h'
+
+    vault write database/roles/${path}-readonly \
+        db_name=$path \
+        creation_statements=@readonly.sql \
+        default_ttl=1h \
+        max_ttl=10h
+
+}
+
+
+
+# Create a readwrite database role within Vault
+function create_role_rw() {
+
+    local path=$1
+
+    rm -f readonly.sql
+    cat <<EOF | tee readonly.sql
+CREATE ROLE "{{name}}" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "{{name}}";
+EOF
+
+    echo 'vault write database/roles/${path}-readwrite \
+        db_name=$path \
+        creation_statements=@readwrite.sql \
+        default_ttl=1h \
+        max_ttl=10h'
+    vault write database/roles/${path}-readwrite \
+        db_name=$path \
+        creation_statements=@readwrite.sql \
+        default_ttl=1h \
+        max_ttl=10h
+
+}
+
+function create_policy() {
+
+    local path=$1
+    local operation=$2
+
+rm -f ${operation}.hcl
+cat <<EOF | tee ${operation}.hcl
+path "database/creds/${path}-${operation}" {
+  capabilities = ["read"]
+}
+path "database/roles" {
+  capabilities = ["list"]
+}
+path "database/roles/${path}-${operation}" {
+  capabilities = ["read"]
+}
+EOF
+
+
+    echo 'vault policy write ${path}-${operation} ${operation}.hcl' 
+    vault policy write ${path}-${operation} ${operation}.hcl
+    
+
+}
+
+function create_policy_rw() {
+
+    local path=$1
+    
+    rm -f readwrite.hcl
+
+cat <<EOF | tee readwrite.hcl
+path "database/creds/${path}-readwrite" {
+  capabilities = ["read"]
+}
+path "database/roles" {
+  capabilities = ["list"]
+}
+path "database/roles/${path}-readwrite" {
+  capabilities = ["read"]
+}
+EOF
+
+
+    echo 'vault policy write ${path}-readwrite readwrite.hcl' 
+    vault policy write ${path}-readwrite readwrite.hcl
+    
+
+}
+
+function create_user() {
+
+    local VAULT_USER=$1
+    local VAULT_USER_PASSWD=$2
+    local policy=$3
+
+    vault write auth/userpass/users/${VAULT_USER} \
+        policies=default,$policy \
+        password=${VAULT_USER_PASSWD}
+
+}
+
+
+source ../demo-env
+export VAULT_TOKEN=$(cat ~/vault.info | grep Root | cut -f4 -d' ')
+
+# Enable secrets database and userpass engines
+# vault secrets enable database 
+vault secrets enable database
+vault auth enable userpass
+
+# apps=("app01")
+
+apps=("app01" "app02" "app03")
+
+vault write database/config/postgresql \
+#     plugin_name=postgresql-database-plugin \
+#     allowed_roles="readonly" \
+#     connection_url="postgresql://{{username}}:{{password}}@localhost:5432/test_db01?sslmode=disable" \
+#     username=${PGSQL_VAULT_ADMIN} \
+#     password=${PGSQL_VAULT_ADMIN_PASSWD}
+
+for i in "${apps[@]}"
+do
+
+    # Create the Vault policy
+    echo "###################################################################"
+    echo "#"
+    echo "# Create ReadOnly and ReadWrite policies for $i"
+    echo "#"  
+    echo "###################################################################"
+  
+    create_policy $i "readonly"
+    echo 
+    echo
+    create_policy $i "readwrite"
+    pause
+
+
+    # Configure the postgres secrets engine
+    enable_db_engine $i
+    pause
+
+    # Create a readonly database role within Vault
+    create_role_ro $i
+    # pause
+
+    create_role_rw $i
+    pause
+
+
+    create_user ${i}-readonly ${VAULT_USER_PASSWD} $i-readonly
+    pause
+
+    create_user ${i}-readwrite ${VAULT_USER_PASSWD} $i-readwrite
+    pause
+
+    vault token create -policy $i-readonly -format=json > $i-readonly.token
+    vault token create -policy $i-readwrite -format=json > $i-readwrite.token
+
+done
+
+
+# enable_db_engine "app01"
+# enable_db_engine "app02"
+# enable_db_engine "app03"
+
+
+# # Create a readonly & readwrite database role within Vault
+# setup_ro "app01"
+# setup_rw "app01"
+
+# setup_ro "app02"
+# setup_rw "app02"
+
+# setup_ro "app03"
+# setup_rw "app03"
+
+# vault write $1/roles/readonly \
+#     db_name=postgresql \
+#     creation_statements=@readonly.sql \
+#     default_ttl=1h \
+#     max_ttl=10h
+
+
+# https://learn.hashicorp.com/tutorials/vault/database-secrets#create-a-role
+# vault policy write my-policy admin.hcl
+
+# cat <<EOF > readonly.hcl
+# # Get credentials from the database secrets engine 'readonly' role.
+# path "database/creds/readonly" {
+#   capabilities = [ "read" ]
+# }
+# EOF
+# vault policy write db-read readonly.hcl
+# rm -f readonly.hcl
+
+# vault write auth/userpass/users/readonly \
+#   password=password \
+#   policies=readonly
+
+
+
+# vault write auth/userpass/users/${VAULT_USER} \
+#     policies=default,db-read password=${VAULT_USER_PASSWD}
+
+# create_user app01ro ${VAULT_USER_PASSWD} 
+# create_user app01rw ${VAULT_USER_PASSWD}
+# create_user app02ro ${VAULT_USER_PASSWD}
+# create_user app02rw ${VAULT_USER_PASSWD}
+# create_user app03ro ${VAULT_USER_PASSWD}
+# create_user app03rw ${VAULT_USER_PASSWD}
+

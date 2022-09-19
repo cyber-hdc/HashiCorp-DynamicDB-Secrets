@@ -1,0 +1,26 @@
+#!/bin/bash
+
+sudo echo "
+vmhgfs-fuse   /mnt/hgfs    fuse    defaults,allow_other    0    0
+" >> /etc/fstab
+
+sudo cp update /usr/local/bin/update
+sudo chmod +x /usr/local/bin/update
+
+update
+sudo apt install net-tools netcat postgresql postgresql-contrib jq
+sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+
+
+vault_version="1.11.2"
+vault_file=vault_${vault_version}_linux_amd64.zip
+
+if [ ! -f $vault_file ];
+then
+
+    curl https://releases.hashicorp.com/vault/${vault_version}/$vault_file -o $vault_file
+    
+fi
+rm -f vault
+unzip $vault_file
+sudo mv vault /usr/local/bin/vault

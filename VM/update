@@ -1,0 +1,50 @@
+#!/bin/bash
+
+echo "***************************************************************"
+echo Removing packages that are no longer required
+echo "***************************************************************"
+#sudo apt autoremove
+sudo apt -y autoremove
+
+echo "***************************************************************"
+echo Running update
+echo "***************************************************************"
+sudo apt -y update
+sleep 2
+
+#
+# Retrieve the number packages to be upgraded
+echo "***************************************************************"
+echo Checking if any packages are marked for update
+echo "***************************************************************"
+ugcount=`sudo apt-get upgrade -s |grep -P '^\d+ upgraded'|cut -d" " -f1`
+
+if [ $ugcount -eq 0 ];
+then
+       echo "No updates found exiting..."
+       exit
+fi
+
+echo "***************************************************************"
+echo Upgradable Packages
+echo "***************************************************************"
+sudo apt list --upgradable
+
+
+read -p "Continue Update? [Yy]" yn
+case $yn in
+   [Nn]* ) exit;;
+esac
+
+echo
+echo "***************************************************************"
+echo Running upgrade
+echo "***************************************************************"
+sudo apt -y upgrade
+sleep 2
+
+echo
+echo "***************************************************************"
+echo Running dist-upgrade
+echo "***************************************************************"
+sudo apt -y dist-upgrade
