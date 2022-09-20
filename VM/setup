@@ -1,14 +1,18 @@
 #!/bin/bash
 
-sudo echo "
-vmhgfs-fuse   /mnt/hgfs    fuse    defaults,allow_other    0    0
-" >> /etc/fstab
+update01="/etc/fstab.update01"
+if [ ! -f $update01 ];
+then
+    sudo echo "vmhgfs-fuse   /mnt/hgfs    fuse    defaults,allow_other    0    0" >> /etc/fstab
+fi
+
+touch $update01
 
 sudo cp update /usr/local/bin/update
 sudo chmod +x /usr/local/bin/update
 
 update
-sudo apt install net-tools netcat postgresql postgresql-contrib jq
+sudo apt install net-tools netcat postgresql postgresql-contrib jq curl zsh
 sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 
 
